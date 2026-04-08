@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>網頁資源收錄系統 | 大大教學</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fef9c3;
+            background-image: radial-gradient(#fde68a 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .cute-card {
+            background: white;
+            border: 3px solid #3b82f6;
+            border-radius: 1.5rem;
+            box-shadow: 6px 6px 0px #3b82f6;
+            transition: all 0.2s;
+        }
+        .cute-card:hover { transform: translateY(-4px); box-shadow: 10px 10px 0px #3b82f6; }
+        .admin-only { display: none; }
+        .is-admin .admin-only { display: block; }
+        .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(6px); }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <script>
+        const DEFAULT_GAS_URL = ""; // 建議在此填入您的正式 URL
+    </script>
+
+    <div class="w-full max-w-6xl">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+            <h1 class="text-4xl font-bold text-blue-600 flex items-center gap-3 cursor-pointer" onclick="fetchData()">
+                <i data-lucide="sparkles" class="w-10 h-10 text-yellow-500"></i>
+                何大大的資源收錄站
+            </h1>
+            <div class="flex flex-wrap justify-center gap-3">
+                <button id="addBtn" onclick="openForm()" class="admin-only px-6 py-2 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 flex items-center gap-2">
+                    <i data-lucide="plus"></i> 新增資源
+                </button>
+                <button id="loginBtn" onclick="openModal('passwordModal')" class="px-6 py-2 bg-white border-2 border-blue-400 text-blue-600 font-bold rounded-full hover:bg-blue-50">
+                    管理登入
+                </button>
+                <button id="logoutBtn" onclick="logout()" class="admin-only px-6 py-2 bg-red-100 border-2 border-red-400 text-red-600 font-bold rounded-full">
+                    登出
+                </button>
+                <button onclick="openModal('settingsModal')" class="p-2 bg-white border-2 border-gray-300 rounded-full text-gray-400">
+                    <i data-lucide="settings"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 狀態顯示 -->
+        <div id="loading" class="flex flex-col items-center justify-center py-20">
+            <div class="loader mb-4"></div>
+            <p class="text-blue-500 font-bold animate-pulse">正在從雲端搬運資料...</p>
+        </div>
+
+        <!-- 卡片容器 -->
+        <div id="cardGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8"></div>
+
+        <!-- 空狀態 -->
+        <div id="emptyState" class="hidden text-center py-20 bg-white/60 rounded-3xl border-4 border-dashed border-blue-200">
+            <i data-lucide="clipboard-list" class="w-20 h-20 mx-auto text-blue-200 mb-4"></i>
+            <p class="text-blue-400 text-xl font-bold">目前資料庫是空的喔！</p>
+            <p class="text-blue-300 text-sm mt-2">請確認 GAS URL 是否正確並具備存取權限。</p>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- [Password Modal] -->
+    <div id="passwordModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full border-4 border-blue-500 shadow-2xl">
+            <h3 class="text-2xl font-bold text-center mb-6 text-blue-600">管理驗證</h3>
+            <input type="password" id="pwdInput" placeholder="請輸入管理密碼" class="w-full p-4 text-center text-xl bg-blue-50 border-2 border-blue-200 rounded-2xl mb-6 focus:outline-none focus:border-blue-500">
+            <div class="flex gap-3">
+                <button onclick="closeModal('passwordModal')" class="flex-1 py-3 bg-gray-100 text-gray-500 font-bold rounded-xl">取消</button>
+                <button id="confirmLoginBtn" onclick="checkPassword()" class="flex-1 py-3 bg-blue-500 text-white font-bold rounded-xl shadow-lg">登入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [Form Modal] -->
+    <div id="formModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full border-4 border-green-400 my-8 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-green-600 flex items-center gap-2">
+                    <i data-lucide="edit-3"></i> 新增資源卡片
+                </h3>
+                <button onclick="closeModal('formModal')" class="text-gray-400 hover:text-red-500"><i data-lucide="x"></i></button>
+            </div>
+            <form id="resourceForm" class="space-y-4">
+                <input type="text" id="name" required placeholder="資源名稱" class="w-full p-3 bg-green-50 border-2 border-green-100 rounded-xl">
+                <input type="url" id="url" required placeholder="網址 (https://...)" class="w-full p-3 bg-green-50 border-2 border-green-100 rounded-xl">
+                <select id="type" class="w-full p-3 bg-green-50 border-2 border-green-100 rounded-xl">
+                    <option value="教學影片">📺 教學影片</option>
+                    <option value="線上工具">🛠️ 線上工具</option>
+                    <option value="參考文章">📖 參考文章</option>
+                    <option value="下載教材">📜 筆記教材</option>
+                    <option value="其他">🌟 其他</option>
+                </select>
+                <textarea id="note" rows="2" placeholder="相關備註..." class="w-full p-3 bg-green-50 border-2 border-green-100 rounded-xl"></textarea>
+                <div class="p-3 bg-green-50 rounded-xl border-2 border-dashed border-green-200">
+                    <label class="block text-xs font-bold text-green-600 mb-2">上傳預覽圖</label>
+                    <input type="file" id="imageInput" accept="image/*" class="w-full text-xs">
+                </div>
+                <button type="submit" id="submitBtn" class="w-full py-4 bg-green-500 text-white font-bold rounded-2xl text-xl shadow-lg hover:bg-green-600 transition-colors">確認存入資料庫</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- [Alert Modal] -->
+    <div id="alertModal" class="fixed inset-0 modal-overlay hidden z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full text-center border-4 border-blue-400">
+            <div id="alertIcon" class="mx-auto mb-4 w-12 h-12 flex items-center justify-center rounded-full"></div>
+            <h3 id="alertTitle" class="text-xl font-bold mb-2"></h3>
+            <p id="alertMessage" class="text-gray-600 mb-6"></p>
+            <button onclick="closeModal('alertModal')" class="w-full py-3 bg-blue-500 text-white font-bold rounded-xl">我知道了</button>
+        </div>
+    </div>
+
+    <!-- [Settings Modal] -->
+    <div id="settingsModal" class="fixed inset-0 modal-overlay hidden z-40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-6 max-w-md w-full border-4 border-gray-400">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold">系統連線設定</h3>
+                <button onclick="closeModal('settingsModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">GAS Web App URL</label>
+                    <input type="password" id="gasUrlInput" class="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-xl" placeholder="https://script.google.com/...">
+                </div>
+                <button onclick="saveGasUrl()" class="w-full py-3 bg-blue-500 text-white font-bold rounded-xl">儲存並重讀</button>
+                <button onclick="clearSystem()" class="w-full py-3 bg-red-50 text-red-500 border-2 border-red-100 rounded-xl text-sm">重置系統</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentGasUrl = "";
+        let base64Image = "";
+
+        window.onload = () => {
+            initSystem();
+            fetchData();
+            lucide.createIcons();
+        };
+
+        function initSystem() {
+            currentGasUrl = localStorage.getItem('gas_api_url') || DEFAULT_GAS_URL;
+            document.getElementById('gasUrlInput').value = currentGasUrl;
+            if (sessionStorage.getItem('is_admin') === 'true') enableAdminMode();
+        }
+
+        async function fetchData() {
+            const grid = document.getElementById('cardGrid');
+            const loading = document.getElementById('loading');
+            const empty = document.getElementById('emptyState');
+            if (!currentGasUrl) {
+                loading.classList.add('hidden');
+                empty.classList.remove('hidden');
+                return;
+            }
+            loading.classList.remove('hidden');
+            grid.innerHTML = "";
+            empty.classList.add('hidden');
+            try {
+                const response = await fetch(`${currentGasUrl}?t=${Date.now()}`);
+                const result = await response.json();
+                if (result.status === "success" && result.data && result.data.length > 0) {
+                    renderCards(result.data);
+                } else {
+                    empty.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("API Error:", error);
+                showModal("API 連線失敗", "請檢查 GAS 網址與權限。", "error");
+                empty.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function renderCards(data) {
+            const grid = document.getElementById('cardGrid');
+            grid.innerHTML = "";
+            data.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "cute-card overflow-hidden flex flex-col bg-white";
+                card.innerHTML = `
+                    <div class="h-44 bg-blue-50 flex items-center justify-center overflow-hidden relative">
+                        ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i data-lucide="image" class="w-12 h-12 text-blue-200"></i>`}
+                        <div class="absolute top-3 left-3 px-3 py-1 bg-white/90 backdrop-blur-sm text-blue-600 text-xs font-bold rounded-full shadow-sm">
+                            ${item.type}
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="text-xl font-bold text-gray-800 leading-tight">${item.name}</h4>
+                            <button onclick="deleteRow(${item.rowId})" class="admin-only p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <p class="text-gray-500 text-sm mb-5 flex-1 line-clamp-2">${item.note || "無備註內容"}</p>
+                        <a href="${item.url}" target="_blank" class="block w-full py-3 bg-blue-500 text-white text-center font-bold rounded-2xl hover:bg-blue-600 transition-all shadow-md">
+                            立即開啟資源
+                        </a>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // --- 管理功能 ---
+        async function checkPassword() {
+            const pwd = document.getElementById('pwdInput').value;
+            const btn = document.getElementById('confirmLoginBtn');
+            if (!currentGasUrl) {
+                showModal("提示", "請先點擊⚙️設定 API 網址。", "info");
+                return;
+            }
+            btn.disabled = true;
+            btn.innerText = "驗證中...";
+            try {
+                const response = await fetch(currentGasUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "verify_password", password: pwd })
+                });
+                const result = await response.json();
+                if (result.status === "success") {
+                    enableAdminMode();
+                    closeModal('passwordModal');
+                    showModal("驗證成功", "管理模式已啟動。", "success");
+                } else {
+                    showModal("失敗", result.message, "error");
+                }
+            } catch (err) {
+                showModal("錯誤", "驗證連線失敗，請檢查 API 部署網址。", "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "登入";
+            }
+        }
+
+        function enableAdminMode() {
+            sessionStorage.setItem('is_admin', 'true');
+            document.body.classList.add('is-admin');
+            document.getElementById('loginBtn').classList.add('hidden');
+            lucide.createIcons();
+        }
+
+        function logout() {
+            sessionStorage.removeItem('is_admin');
+            document.body.classList.remove('is-admin');
+            document.getElementById('loginBtn').classList.remove('hidden');
+            showModal("已登出", "管理權限已暫停。", "info");
+        }
+
+        // --- 資料操作 ---
+        function openForm() {
+            document.getElementById('resourceForm').reset();
+            base64Image = "";
+            openModal('formModal');
+        }
+
+        async function deleteRow(rowId) {
+            if (!confirm("確定要將這張卡片從資料庫移除嗎？")) return;
+            try {
+                await fetch(currentGasUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({ action: "delete", rowId: rowId })
+                });
+                showModal("處理中", "正在通知雲端執行刪除...", "info");
+                setTimeout(fetchData, 2000);
+            } catch (err) {
+                showModal("錯誤", "無法刪除資料。", "error");
+            }
+        }
+
+        document.getElementById('resourceForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerText = "傳送中...";
+            const payload = {
+                action: "add",
+                name: document.getElementById('name').value,
+                url: document.getElementById('url').value,
+                type: document.getElementById('type').value,
+                note: document.getElementById('note').value,
+                image: base64Image
+            };
+            try {
+                await fetch(currentGasUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+                closeModal('formModal');
+                showModal("收錄成功", "資料已存入雲端。", "success");
+                setTimeout(fetchData, 2000);
+            } catch (err) {
+                showModal("失敗", err.message, "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "確認存入資料庫";
+            }
+        };
+
+        // --- 圖片處理 ---
+        document.getElementById('imageInput').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 600;
+                    let width = img.width, height = img.height;
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    base64Image = canvas.toDataURL('image/jpeg', 0.6);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // --- UI 工具 ---
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function showModal(title, message, type) {
+            const modal = document.getElementById('alertModal');
+            const icon = document.getElementById('alertIcon');
+            document.getElementById('alertTitle').innerText = title;
+            document.getElementById('alertMessage').innerText = message;
+            icon.className = "mx-auto mb-4 w-12 h-12 flex items-center justify-center rounded-full " + 
+                (type === 'success' ? "bg-green-500" : type === 'error' ? "bg-red-500" : "bg-blue-500");
+            icon.innerHTML = `<i data-lucide="${type === 'success' ? 'check' : type === 'error' ? 'x' : 'info'}" class="text-white"></i>`;
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+        function saveGasUrl() {
+            const url = document.getElementById('gasUrlInput').value.trim();
+            localStorage.setItem('gas_api_url', url);
+            currentGasUrl = url;
+            closeModal('settingsModal');
+            fetchData();
+        }
+        function clearSystem() {
+            if (confirm("這會重置本地快取，確定嗎？")) { localStorage.clear(); sessionStorage.clear(); window.location.reload(); }
+        }
+    </script>
+</body>
+</html>
